@@ -79,39 +79,13 @@ Captured from the running app with demo accounts (390 x 844 phone viewport).
 </tr>
 </table>
 
-## Quick start
-
-You need a free [Firebase](https://firebase.google.com) project (Spark plan) and, optionally, free GIPHY and Metered accounts.
-
-1. **Create the Firebase project.** Add a Web app. Turn on **Authentication > Email/Password** (Flami signs users in with `name@flami.chat` aliases, so nobody needs a real email) and create a **Firestore** database.
-2. **Add your config.**
-   ```sh
-   cp app/config.example.js app/config.js     # then fill in your values
-   cp .firebaserc.example .firebaserc         # then set your project id
-   ```
-   `config.js` and `.firebaserc` are gitignored.
-3. **Run it locally.**
-   ```sh
-   python3 -m http.server 8000 --directory app
-   # open http://localhost:8000
-   ```
-4. **Deploy rules and hosting** (free).
-   ```sh
-   npm i -g firebase-tools
-   firebase login
-   firebase deploy --only firestore:rules,hosting
-   ```
-5. **Lock down the API key.** In Google Cloud Console, restrict the Firebase web API key to your site's domain. See [SECURITY.md](SECURITY.md).
-
-Keys are optional. Without a GIPHY key the GIF picker stays empty. Without a Metered TURN credential calls use STUN only and can fail on strict mobile networks.
-
 ## Project layout
 
 ```
 app/
   index.html, app.js, app.css   the whole client (ES modules, no bundler)
   sw.js, manifest.json          offline shell and PWA install
-  config.example.js             copy to config.js with your own keys
+  config.example.js             optional service configuration template
   games/                        Spyfall, Longwave, Snakeout (MIT, see THIRD_PARTY_NOTICES.md)
 firestore.rules                 all data access rules
 firebase.json                   hosting and rules config

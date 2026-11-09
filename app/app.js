@@ -2105,7 +2105,7 @@ document.addEventListener('visibilitychange',()=>{ if(!document.hidden&&state.ca
 window.addEventListener('online',()=>{ if(state.call)refreshCallPresence(state.call); });
 
 /* A deployed update cannot replace JavaScript already running in an open tab. */
-const CLIENT_VERSION='20261109-watch1b';
+const CLIENT_VERSION='20261109-contrast1';
 let lastUpdateCheck=0;
 async function checkAppUpdate(){
  if(document.hidden||!navigator.onLine||Date.now()-lastUpdateCheck<60000)return;lastUpdateCheck=Date.now();
