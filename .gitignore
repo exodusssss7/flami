@@ -1,0 +1,22 @@
+# Local secrets and project binding (never commit)
+app/config.js
+.firebaserc
+.env
+.env.*
+*.pem
+*.key
+serviceAccount*.json
+*-service-account*.json
+
+# Firebase / tooling
+.firebase/
+firebase-debug.log*
+firestore-debug.log
+ui-debug.log
+node_modules/
+
+# OS / editor
+.DS_Store
+Thumbs.db
+.vscode/
+.idea/

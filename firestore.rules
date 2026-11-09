@@ -1,0 +1,98 @@
+rules_version = '2';
+service cloud.firestore {
+ match /databases/{database}/documents {
+  function signedIn(){return request.auth!=null;}
+  function member(c){return signedIn() && request.auth.uid in c.members;}
+  function chatData(cid){return get(/databases/$(database)/documents/chats/$(cid)).data;}
+  match /usernames/{name} {
+   allow get: if true;
+   allow list: if false;
+   allow create: if signedIn() && request.resource.data.keys().hasOnly(['uid']) && request.resource.data.uid==request.auth.uid && request.auth.token.email==name+'@flami.chat';
+   allow update: if false;
+   allow delete: if signedIn() && resource.data.uid==request.auth.uid;
+  }
+  match /profiles/{uid} {
+   allow read: if signedIn();
+   allow create,update: if signedIn() && request.auth.uid==uid && request.resource.data.keys().hasOnly(['username','name','createdAt','lastSeen','photo']) && request.resource.data.name is string && request.resource.data.name.size()<=60 && request.auth.token.email==request.resource.data.username+'@flami.chat' && (!request.resource.data.keys().hasAny(['photo']) || (request.resource.data.photo is string && request.resource.data.photo.size()<=150000));
+   allow delete: if signedIn() && request.auth.uid==uid;
+  }
+  match /privateProfiles/{uid} {allow read,write: if signedIn() && request.auth.uid==uid;}
+  match /chats/{cid} {
+   allow read: if member(resource.data);
+   allow create: if member(request.resource.data) && request.resource.data.members.size()>=2 && request.resource.data.members.size()<=100 && request.resource.data.createdBy==request.auth.uid && request.resource.data.admins==[request.auth.uid] && request.resource.data.type in ['dm','group'];
+   allow update: if member(resource.data) && (
+    (request.resource.data.diff(resource.data).affectedKeys().hasOnly(['updatedAt','lastMsg','typing','presence','unread']) && (!request.resource.data.diff(resource.data).affectedKeys().hasAny(['lastMsg']) || request.resource.data.lastMsg.sender==request.auth.uid) && request.resource.data.get('typing',{}).diff(resource.data.get('typing',{})).affectedKeys().hasOnly([request.auth.uid]) && request.resource.data.get('presence',{}).diff(resource.data.get('presence',{})).affectedKeys().hasOnly([request.auth.uid])) ||
+    (request.auth.uid in resource.data.admins && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['members','admins','name','photo']) && request.resource.data.members.size()<=100 && request.resource.data.admins.hasAll(resource.data.admins) && (!request.resource.data.keys().hasAny(['photo']) || (request.resource.data.photo is string && request.resource.data.photo.size()<=150000))) ||
+    (request.auth.uid in resource.data.members && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['members']) && request.resource.data.members.size()==resource.data.members.size()-1 && !(request.auth.uid in request.resource.data.members))
+   );
+   allow delete: if member(resource.data) && request.auth.uid in resource.data.admins;
+   match /call/{docId} {
+    allow read: if member(chatData(cid));
+    allow create: if member(chatData(cid)) && request.resource.data.keys().hasOnly(['active','startedBy','startedAt','lastActivity']) && request.resource.data.active==true && request.resource.data.startedBy==request.auth.uid;
+    allow update: if member(chatData(cid)) && (
+     (request.resource.data.diff(resource.data).affectedKeys().hasOnly(['lastActivity'])) ||
+     (request.auth.uid==resource.data.startedBy && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['active','lastActivity']) && request.resource.data.active==false) ||
+     (resource.data.lastActivity < request.time - duration.value(15,'m') && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['active','startedBy','startedAt','lastActivity']) && request.resource.data.active==true && request.resource.data.startedBy==request.auth.uid)
+    );
+    allow delete: if member(chatData(cid)) && (request.auth.uid==resource.data.startedBy || resource.data.lastActivity < request.time - duration.value(15,'m'));
+   }
+   match /callParts/{uid} {
+    allow read: if member(chatData(cid));
+    allow create,update: if member(chatData(cid)) && request.auth.uid==uid && request.resource.data.keys().hasOnly(['name','ping','muted']) && request.resource.data.name is string && request.resource.data.name.size()<=60 && request.resource.data.ping is number && request.resource.data.muted is bool;
+    allow delete: if member(chatData(cid)) && (request.auth.uid==uid || resource.data.ping < request.time.toMillis() - 75000);
+   }
+   match /callSignals/{sid} {
+    allow read: if member(chatData(cid)) && (resource.data.from==request.auth.uid || resource.data.to==request.auth.uid);
+    allow create: if member(chatData(cid)) && request.resource.data.keys().hasOnly(['from','to','type','sdp','candidate','ts']) && request.resource.data.from==request.auth.uid && request.resource.data.to in chatData(cid).members && request.resource.data.type in ['sdp','candidate','bye'] && request.resource.data.get('sdp','') is string && request.resource.data.get('sdp','').size()<=20000 && request.resource.data.get('candidate','') is string && request.resource.data.get('candidate','').size()<=2048;
+    allow update: if false;
+    allow delete: if member(chatData(cid)) && (resource.data.to==request.auth.uid || resource.data.from==request.auth.uid);
+   }
+   match /games/{gid} {
+    function groupMember(){return member(get(/databases/$(database)/documents/chats/$(cid)).data) && get(/databases/$(database)/documents/chats/$(cid)).data.type=='group';}
+    function validGame(){return request.resource.data.keys().hasOnly(['gameId','sessionId','host','status','roomCode','players','createdAt']) && request.resource.data.get('gameId','drawphone') in ['drawphone','spyfall','longwave','snakeout'] && request.resource.data.sessionId is string && request.resource.data.sessionId.size()<=50 && request.resource.data.host is string && request.resource.data.status in ['setup','ready','ended'] && request.resource.data.roomCode is string && request.resource.data.roomCode.size()<=4 && request.resource.data.players is map;}
+    allow read: if groupMember();
+    allow create: if gid=='current' && groupMember() && validGame() && request.resource.data.host==request.auth.uid && request.resource.data.status=='setup' && request.resource.data.roomCode=='' && request.resource.data.players.keys().hasOnly([request.auth.uid]) && request.resource.data.players[request.auth.uid]==true;
+    allow update: if gid=='current' && groupMember() && validGame() && (
+     (resource.data.status=='ended' && request.resource.data.sessionId!=resource.data.sessionId && request.resource.data.host==request.auth.uid && request.resource.data.status=='setup' && request.resource.data.roomCode=='' && request.resource.data.players.keys().hasOnly([request.auth.uid]) && request.resource.data.players[request.auth.uid]==true) ||
+     (request.auth.uid==resource.data.host && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['status','roomCode']) && resource.data.status!='ended' && request.resource.data.status in ['ready','ended'] && (request.resource.data.status=='ended' || (request.resource.data.get('gameId','drawphone')=='longwave' ? request.resource.data.roomCode=='' : request.resource.data.roomCode.matches('^[a-z]{4}$')))) ||
+     (resource.data.status!='ended' && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['players']) && request.resource.data.players.diff(resource.data.players).affectedKeys().hasOnly([request.auth.uid]) && request.resource.data.players[request.auth.uid] is bool)
+    );
+    allow delete: if groupMember() && resource.data.host==request.auth.uid;
+   }
+   match /watch/{wid} {
+    function groupMemberW(){return member(chatData(cid)) && chatData(cid).type=='group';}
+    function validWatch(){return request.resource.data.keys().hasOnly(['sessionId','host','status','title','src','srcLabel','link','state','viewers','createdAt']) && request.resource.data.sessionId is string && request.resource.data.sessionId.size()<=50 && request.resource.data.host is string && request.resource.data.status in ['setup','live','ended'] && request.resource.data.title is string && request.resource.data.title.size()<=120 && request.resource.data.src is string && request.resource.data.src.size()<=1200 && request.resource.data.srcLabel is string && request.resource.data.srcLabel.size()<=20 && request.resource.data.link is string && request.resource.data.link.size()<=1200 && request.resource.data.state is map && request.resource.data.state.keys().hasOnly(['playing','time','at']) && request.resource.data.state.playing is bool && request.resource.data.state.time is number && request.resource.data.state.at is number && request.resource.data.viewers is map;}
+    allow read: if groupMemberW();
+    allow create: if wid=='current' && groupMemberW() && validWatch() && request.resource.data.host==request.auth.uid && request.resource.data.status=='setup' && request.resource.data.viewers.keys().hasOnly([request.auth.uid]) && request.resource.data.viewers[request.auth.uid]==true;
+    allow update: if wid=='current' && groupMemberW() && validWatch() && (
+     (resource.data.status=='ended' && request.resource.data.sessionId!=resource.data.sessionId && request.resource.data.host==request.auth.uid && request.resource.data.status=='setup' && request.resource.data.viewers.keys().hasOnly([request.auth.uid]) && request.resource.data.viewers[request.auth.uid]==true) ||
+     (request.auth.uid==resource.data.host && resource.data.status!='ended' && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['status','title','src','srcLabel','link','state','viewers']) && request.resource.data.status in ['live','ended']) ||
+     (resource.data.status!='ended' && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['viewers']) && request.resource.data.viewers.diff(resource.data.viewers).affectedKeys().hasOnly([request.auth.uid]) && request.resource.data.viewers[request.auth.uid] is bool)
+    );
+    allow delete: if groupMemberW() && resource.data.host==request.auth.uid;
+   }
+   match /watchReacts/{rid} {
+    allow read: if member(chatData(cid));
+    allow create: if member(chatData(cid)) && request.resource.data.keys().hasOnly(['e','uid','at']) && request.resource.data.uid==request.auth.uid && request.resource.data.e is string && request.resource.data.e.size()<=8 && request.resource.data.at is number;
+    allow update: if false;
+    allow delete: if member(chatData(cid)) && resource.data.uid==request.auth.uid;
+   }
+   match /messages/{mid} {
+    allow read: if member(chatData(cid));
+    allow create: if member(chatData(cid)) && request.resource.data.sender==request.auth.uid && request.resource.data.type in ['text','voice','gif','game','image','call','watch'] && (!request.resource.data.keys().hasAny(['image']) || (request.resource.data.image is string && request.resource.data.image.size()<=980000)) && (!request.resource.data.keys().hasAny(['mediaId']) || request.resource.data.mediaId is string) && (request.resource.data.type!='game' || (chatData(cid).type=='group' && request.resource.data.sessionId==get(/databases/$(database)/documents/chats/$(cid)/games/current).data.sessionId && get(/databases/$(database)/documents/chats/$(cid)/games/current).data.host==request.auth.uid)) && (request.resource.data.type!='watch' || (chatData(cid).type=='group' && request.resource.data.sessionId==get(/databases/$(database)/documents/chats/$(cid)/watch/current).data.sessionId && get(/databases/$(database)/documents/chats/$(cid)/watch/current).data.host==request.auth.uid));
+    allow update: if member(chatData(cid)) && (
+     (request.resource.data.diff(resource.data).affectedKeys().hasOnly(['reactions']) && request.resource.data.get('reactions',{}) is map && request.resource.data.get('reactions',{}).size()<=50 && request.resource.data.get('reactions',{}).diff(resource.data.get('reactions',{})).affectedKeys().hasOnly([request.auth.uid])) ||
+     (request.resource.data.diff(resource.data).affectedKeys().hasOnly(['reads']) && request.resource.data.get('reads',{}) is map && request.resource.data.get('reads',{}).diff(resource.data.get('reads',{})).affectedKeys().hasOnly([request.auth.uid])) ||
+     (resource.data.sender==request.auth.uid && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['text','edited']) && request.resource.data.text is string && request.resource.data.text.size()<=5000)
+    );
+    allow delete: if member(chatData(cid)) && (resource.data.sender==request.auth.uid || request.auth.uid in chatData(cid).admins);
+   }
+   match /media/{mid} {
+    allow read: if member(chatData(cid));
+    allow create: if member(chatData(cid)) && request.resource.data.keys().hasOnly(['data','mime','sender','createdAt']) && request.resource.data.sender==request.auth.uid && request.resource.data.data is string && request.resource.data.data.size()<=980000 && request.resource.data.mime is string && request.resource.data.mime.size()<=40;
+    allow update: if false;
+    allow delete: if member(chatData(cid)) && (resource.data.sender==request.auth.uid || request.auth.uid in chatData(cid).admins);
+   }
+  }
+ }
+}
