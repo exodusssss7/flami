@@ -79,6 +79,32 @@ Captured from the running app with demo accounts (390 x 844 phone viewport).
 </tr>
 </table>
 
+## Make your own Flami
+
+You need a Firebase project. Flami works with Firebase's no-cost Spark plan within its quotas. Optional GIPHY and Metered credentials enable GIFs and TURN relay for calls.
+
+1. **Create the Firebase project.** Add a Web app, enable Email/Password in Authentication, and create a Cloud Firestore database. Flami uses `name@flami.chat` aliases, so people do not need real email addresses.
+2. **Add your config.**
+   ```sh
+   cp app/config.example.js app/config.js     # then fill in your values
+   cp .firebaserc.example .firebaserc         # then set your project id
+   ```
+   `config.js` and `.firebaserc` are gitignored.
+3. **Run it locally.**
+   ```sh
+   python3 -m http.server 8000 --directory app
+   # open http://localhost:8000
+   ```
+4. **Deploy rules and hosting.**
+   ```sh
+   npm install -g firebase-tools
+   firebase login
+   firebase deploy --only firestore:rules,hosting
+   ```
+5. **Restrict the Firebase API key** to your site's domain. See [SECURITY.md](SECURITY.md).
+
+The Spark plan has usage quotas. If a product's quota is exceeded, its use can be paused until the next calendar month. Check [Firebase's current pricing and quotas](https://firebase.google.com/docs/projects/billing/firebase-pricing-plans). Leave `GIPHY_KEY` empty to disable GIF search. Without Metered TURN credentials, calls use STUN only and may fail on strict mobile networks.
+
 ## Project layout
 
 ```
